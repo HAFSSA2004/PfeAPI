@@ -88,7 +88,9 @@ async function uploadFileToS3(file, folder) {
   await s3Client.send(new PutObjectCommand(params))
   return `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`
 }
-
+app.get("/", (req, res) => {
+    res.send("Welcome to the API! Use /products to get data.");
+});
 app.post("/signup", async (req, res) => {
   const { nom, prenom, email, mot_de_passe, role } = req.body // Ajouter le rôle
   try {
