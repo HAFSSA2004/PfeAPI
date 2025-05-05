@@ -2,7 +2,7 @@
         const express = require("express");
         const mongoose = require("mongoose");
         const cors = require("cors");
-       const multer = require("multer");
+       // const multer = require("multer");
       //  const path = require("path");
         //const jwt = require("jsonwebtoken");
         //const bcrypt = require("bcrypt");
@@ -239,14 +239,34 @@
                                 res.status(500).json({ message: "Erreur serveur", error: err });
                             }
                         });
-                        const storage = multer.diskStorage({
-                                    destination: "./uploads",
-                                    filename: (req, file, cb) => {
-                                        cb(null, Date.now() + path.extname(file.originalname));
-                                    }
-                                });
-                                const upload = multer({ storage });
                         
+
+                        const verifyToken = (req, res, next) => {
+                                    const token = req.header("Authorization"); // "Bearer ey..."
+                                
+                                    if (!token) {
+                                        return res.status(403).json({ message: "Accès refusé. Aucun token fourni." });
+                                    }
+                                
+                                    try {
+                                        // Remove "Bearer " if present
+                                        const actualToken = token.replace("Bearer ", "");
+                                        
+                                        // Verify the token
+                                        const decoded = jwt.verify(actualToken, "SECRET_KEY");
+                                        req.user = decoded; // Pass user data to next middleware
+                                        next();
+                                    } catch (err) {
+                                        if (err.name === "TokenExpiredError") {
+                                            return res.status(401).json({ message: "Erreur de vérification de token: Token expiré." });
+                                        } else if (err.name === "JsonWebTokenError") {
+                                            return res.status(401).json({ message: "Token invalide." });
+                                        } else {
+                                            return res.status(500).json({ message: "Erreur lors de la vérification du token." });
+                                        }
+                                    }
+                                };
+                                
         // Démarrer le serveur
         app.listen(PORT, () => {   
             console.log(`🚀 Serveur en cours d'exécution sur http://localhost:${PORT}`);
