@@ -60,7 +60,47 @@
         app.get("/", (req, res) => {
             res.send("Welcome to the API! Use /products to get data.");
         });
+        app.post("/signup", async (req, res) => {
+                    const { nom, prenom, email, mot_de_passe, role } = req.body; // Ajouter le rôle
+                    try {
+                        const existingUser = await User.findOne({ email });
+                        if (existingUser) {
+                            return res.status(400).json({ message: "Email déjà utilisé !" });
+                        }
+                        const hashedPassword = await bcrypt.hash(mot_de_passe, 10);
+                        const newUser = new User({ nom, prenom, email, mot_de_passe: hashedPassword, role }); // Inclure le rôle
+                        await newUser.save();
+                        res.status(201).json({ message: "Utilisateur enregistré avec succès !" });
+                    } catch (error) {
+                        res.status(500).json({ error: "Erreur lors de l'inscription" });
+                    }
+                });
 
+                 app.post("/login", async (req, res) => {
+                            const { email, mot_de_passe } = req.body;
+                            try {
+                                const user = await User.findOne({ email });
+                                console.log("Utilisateur trouvé :", user); // 🔍 Ajout du log
+                        
+                                if (!user) {
+                                    return res.status(400).json({ message: "Email ou mot de passe incorrect !" });
+                                }
+                        
+                                const isMatch = await bcrypt.compare(mot_de_passe, user.mot_de_passe);
+                                console.log("Mot de passe valide :", isMatch); // 🔍 Vérification du mot de passe
+                        
+                                if (!isMatch) {
+                                    return res.status(400).json({ message: "Email ou mot de passe incorrect !" });
+                                }
+                        
+                                const token = jwt.sign({ id: user._id, role: user.role }, "SECRET_KEY", { expiresIn: "24h" });
+                                res.status(200).json({ message: "Connexion réussie !", token, user });
+                        
+                            } catch (error) {
+                                console.error("❌ Erreur lors de la connexion :", error);
+                                res.status(500).json({ error: "Erreur lors de la connexion" });
+                            }
+                        });
         // Démarrer le serveur
         app.listen(PORT, () => {   
             console.log(`🚀 Serveur en cours d'exécution sur http://localhost:${PORT}`);
