@@ -266,6 +266,199 @@
                                         }
                                     }
                                 };
+                                app.get("/me", async (req, res) => {
+                                    const authHeader = req.headers.authorization;
+                                    if (!authHeader) {
+                                        return res.status(401).json({ message: "Token manquant" });
+                                    }
+                                
+                                    const token = authHeader.split(" ")[1];
+                                
+                                    try {
+                                        const decoded = jwt.verify(token, "SECRET_KEY");
+                                
+                                        const user = await User.findById(decoded.id);
+                                        if (!user) {
+                                        return res.status(404).json({ message: "Utilisateur non trouvé" });
+                                        }
+                                
+                                        res.json({ user });
+                                    } catch (error) {
+                                        console.error("Erreur de vérification de token:", error);
+                                        res.status(401).json({ message: "Token invalide" });
+                                    }
+                                    });
+
+                                    app.get("/mes-candidatures", verifyToken, async (req, res) => {
+                                        try {
+                                            const candidatures = await Candidature.find({ id_candidat: req.user.id })
+                                                .populate("id_offre", "titre entreprise lieu") // pour avoir les infos de l'offre
+                                                .sort({ date_postulation: -1 });
+                                
+                                            res.status(200).json(candidatures);
+                                        } catch (err) {
+                                            res.status(500).json({ message: "Erreur lors de la récupération des candidatures", error: err });
+                                        }
+                                    });
+
+                                    app.get('/offres/recruteur/:id', async (req, res) => { // Ajout de async ici
+                                        const id = req.params.id;
+                                        console.log("ID reçu:", id);
+                                        
+                                        try {
+                                            const offres = await Offre.find({ id_recruteur: id }); // Correction ici aussi
+                                            res.status(200).json(offres);
+                                        } catch (error) {
+                                            console.error("Erreur serveur:", error); // Ajout d'un log d'erreur
+                                            res.status(500).json({ message: "Erreur serveur", error: error.message });
+                                        }
+                                    });
+
+                                    app.get("/candidatures", verifyToken, async (req, res) => {
+                                        try {
+                                            // Récupérer les offres créées par le recruteur connecté
+                                            const offres = await Offre.find({ id_recruteur: req.recruteurId }).select("_id");
+                                    
+                                            if (!offres.length) {
+                                                return res.status(200).json([]); // Aucun résultat si le recruteur n'a pas d'offres
+                                            }
+                                    
+                                            // Extraire les IDs des offres
+                                            const offreIds = offres.map(offre => offre._id);
+                                    
+                                            // Trouver les candidatures associées à ces offres
+                                            const candidatures = await Candidature.find({ id_offre: { $in: offreIds } })
+                                                .populate("id_offre", "titre entreprise")
+                                                .exec();
+                                    
+                                            res.status(200).json(candidatures);
+                                        } catch (err) {
+                                            res.status(500).json({ message: "Erreur lors de la récupération des candidatures", error: err });
+                                        }
+                                    });
+
+
+                                    app.get("/candidatures/:recruteurId", async (req, res) => {
+                                        try {
+                                            const { recruteurId } = req.params;
+                                            console.log("🔍 Recruteur ID reçu :", recruteurId);
+                                    
+                                            // Récupérer les offres de ce recruteur
+                                            const offres = await Offre.find({ id_recruteur: recruteurId }).select("_id");
+                                    
+                                            if (offres.length === 0) {
+                                                return res.status(404).json({ message: "Aucune offre trouvée pour ce recruteur" });
+                                            }
+                                    
+                                            const offreIds = offres.map(offre => offre._id);
+                                            console.log("📋 Offres trouvées :", offreIds);
+                                    
+                                            // Récupérer les candidatures liées à ces offres
+                                            const candidatures = await Candidature.find({ id_offre: { $in: offreIds } }).populate("id_offre");
+                                            console.log("📥 Candidatures trouvées :", candidatures);
+                                    
+                                            res.status(200).json(candidatures);
+                                        } catch (error) {
+                                            console.error("❌ Erreur lors de la récupération des candidatures :", error);
+                                            res.status(500).json({ error: "Erreur serveur" });
+                                        }
+                                    });
+
+
+                                    app.use((req, res, next) => {
+                                        res.setHeader("Content-Security-Policy", "script-src 'self' https://apis.google.com https://accounts.google.com");
+                                        next();
+                                    });
+
+
+                                    app.put("/candidatures/:id/statut", async (req, res) => {
+                                        const { id } = req.params;
+                                        const { statut } = req.body;
+                                
+                                        try {
+                                            const updatedCandidature = await Candidature.findByIdAndUpdate(id, { statut }, { new: true });
+                                            if (!updatedCandidature) {
+                                                return res.status(404).json({ message: "Candidature non trouvée" });
+                                            }
+                                            res.json({ message: "Statut mis à jour avec succès", candidature: updatedCandidature });
+                                        } catch (error) {
+                                            res.status(500).json({ error: "Erreur lors de la mise à jour du statut" });
+                                        }
+                                    });
+
+
+                                    app.get("/candidatures/confirmees/:recruteurId", async (req, res) => {
+                                        try {
+                                            const { recruteurId } = req.params;
+                                            console.log("🔍 Recruteur ID reçu :", recruteurId);
+                                
+                                            // Récupérer les offres de ce recruteur
+                                            const offres = await Offre.find({ id_recruteur: recruteurId }).select("_id");
+                                
+                                            if (!offres.length) {
+                                                return res.status(200).json({ message: "Aucune offre trouvée pour ce recruteur" });
+                                            }
+                                
+                                            // Extraire les IDs des offres
+                                            const offreIds = offres.map(offre => offre._id);
+                                
+                                            // Trouver les candidatures confirmées associées à ces offres
+                                            const candidaturesConfirmees = await Candidature.find({ 
+                                                id_offre: { $in: offreIds }, 
+                                                statut: "acceptée" 
+                                            })
+                                            .populate("id_offre", "titre entreprise")
+                                            .exec();
+                                
+                                            res.status(200).json(candidaturesConfirmees);
+                                        } catch (err) {
+                                            res.status(500).json({ message: "Erreur lors de la récupération des candidatures confirmées", error: err });
+                                        }
+                                    });
+
+                                    app.get("/candidatures/statistiques/:recruteurId", async (req, res) => {
+                                        try {
+                                            const { recruteurId } = req.params;
+                                            console.log("🔍 Recruteur ID reçu :", recruteurId);
+                                
+                                            // Récupérer les offres créées par le recruteur
+                                            const offres = await Offre.find({ id_recruteur: recruteurId }).select("_id");
+                                
+                                            if (!offres.length) {
+                                                return res.status(200).json({ 
+                                                    message: "Aucune offre trouvée pour ce recruteur", 
+                                                    statistiques: { en_cours: 0, refusees: 0, acceptees: 0 } 
+                                                });
+                                            }
+                                
+                                            // Extraire les IDs des offres
+                                            const offreIds = offres.map(offre => offre._id);
+                                
+                                            // Compter les candidatures en fonction de leur statut
+                                            const statistiques = await Candidature.aggregate([
+                                                { $match: { id_offre: { $in: offreIds } } },
+                                                { $group: { _id: "$statut", count: { $sum: 1 } } }
+                                            ]);
+                                
+                                            // Transformer les résultats en un objet plus lisible
+                                            const stats = {
+                                                en_cours: 0,
+                                                refusees: 0,
+                                                acceptees: 0
+                                            };
+                                
+                                            statistiques.forEach(stat => {
+                                                if (stat._id === "en cours") stats.en_cours = stat.count;
+                                                if (stat._id === "refusée") stats.refusees = stat.count;
+                                                if (stat._id === "acceptée") stats.acceptees = stat.count;
+                                            });
+                                
+                                            res.status(200).json({ recruteurId, statistiques: stats });
+                                        } catch (err) {
+                                            res.status(500).json({ message: "Erreur lors de la récupération des statistiques des candidatures", error: err });
+                                        }
+                                    });
+                                
                                 
         // Démarrer le serveur
         app.listen(PORT, () => {   
