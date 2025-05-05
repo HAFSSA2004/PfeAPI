@@ -101,6 +101,82 @@
                                 res.status(500).json({ error: "Erreur lors de la connexion" });
                             }
                         });
+
+                        app.get("/users", async (req, res) => {
+                            try {
+                                // Fetch recruiters (role = 'recruteur') and candidates (role = 'candidat')
+                                const recruteurs = await User.find({ role: 'recruteur' });
+                                const candidats = await User.find({ role: 'candidat' });
+                    
+                                // Return both recruiters and candidates in a single response
+                                res.status(200).json({ recruteurs, candidats });
+                            } catch (err) {
+                                console.error("Erreur lors de la récupération des utilisateurs", err);
+                                res.status(500).json({ error: "Erreur lors de la récupération des utilisateurs" });
+                            }
+                        });
+                    
+                        app.delete("/users/:id", async (req, res) => {
+                            try {
+                            const { id } = req.params;
+                            
+                            const user = await User.findById(id);
+                            if (!user) {
+                                return res.status(404).json({ message: "User not found" });
+                            }
+                        
+                            if (user.role === "recruteur") {
+                                // ✅ FIRST: Get offers
+                                const offers = await Offre.find({ id_recruteur: id }).select("_id");
+                                const offerIds = offers.map(offer => offer._id);
+                        
+                                // ✅ THEN: Delete candidatures
+                                if (offerIds.length > 0) {
+                                const deletedCandidatures = await Candidature.deleteMany({ id_offre: { $in: offerIds } });
+                                console.log(`Deleted ${deletedCandidatures.deletedCount} candidatures from recruiter's offers`);
+                                }
+                        
+                                // ✅ LAST: Delete the offers
+                                const deletedOffers = await Offre.deleteMany({ id_recruteur: id });
+                                console.log(`Deleted ${deletedOffers.deletedCount} job offers from recruiter ${id}`);
+                            }
+                        
+                            if (user.role === "candidat") {
+                                const deletedCandidatures = await Candidature.deleteMany({ id_candidat: id });
+                                console.log(`Deleted ${deletedCandidatures.deletedCount} candidatures from candidate ${id}`);
+                            }
+                        
+                            await User.findByIdAndDelete(id);
+                        
+                            res.status(200).json({ message: "User deleted successfully" });
+                            } catch (error) {
+                            console.error("Error deleting user:", error);
+                            res.status(500).json({ message: "Error deleting user", error: error.message });
+                            }
+                        });
+                        app.delete("/offres/:id", async (req, res) => {
+                            try {
+                            const { id } = req.params;
+                            
+                            // Check if offer exists
+                            const offer = await Offre.findById(id);
+                            if (!offer) {
+                                return res.status(404).json({ message: "Job offer not found" });
+                            }
+                            
+                            // Delete all candidatures for this offer
+                            const deletedCandidatures = await Candidature.deleteMany({ id_offre: id });
+                            console.log(`Deleted ${deletedCandidatures.deletedCount} candidatures for offer ${id}`);
+                            
+                            // Delete the offer
+                            await Offre.findByIdAndDelete(id);
+                            
+                            res.status(200).json({ message: "Job offer deleted successfully" });
+                            } catch (error) {
+                            console.error("Error deleting job offer:", error);
+                            res.status(500).json({ message: "Error deleting job offer", error: error.message });
+                            }
+                        });                    
         // Démarrer le serveur
         app.listen(PORT, () => {   
             console.log(`🚀 Serveur en cours d'exécution sur http://localhost:${PORT}`);
