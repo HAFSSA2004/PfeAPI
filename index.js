@@ -326,7 +326,7 @@ app.get("/offre/:id", async (req, res) => {
         
                 const newCandidature = new Candidature({
                     id_offre,
-                    id_candidat: req.user.id, // récupéré depuis verifyToken
+                    id_candidat: req.user.id, // récupéré depuis verifyToken  gi
                     cv: req.files.cv[0].path,
                     lettre_motivation: req.files.lettre_motivation[0].path
                 });
