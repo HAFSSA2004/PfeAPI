@@ -176,7 +176,69 @@
                             console.error("Error deleting job offer:", error);
                             res.status(500).json({ message: "Error deleting job offer", error: error.message });
                             }
-                        });                    
+                        });
+                        
+                        
+                        app.get("/offres", async (req, res) => {
+                            try {
+                                const { titre, lieu } = req.query;
+                                let filter = {};
+                                if (titre) filter.titre = { $regex: titre, $options: "i" };
+                                if (lieu) filter.lieu = { $regex: lieu, $options: "i" };
+                        
+                                // Limit the results to 6 for the initial fetch
+                                const offres = await Offre.find(filter).limit(6);
+                                res.status(200).json(offres || []); // Ensure an empty array is returned
+                            } catch (err) {
+                                res.status(500).json({ error: "Erreur lors de la récupération des offres" });
+                            }
+                        });
+                        app.post("/offres", async (req, res) => {
+                            const { titre, description, entreprise, lieu, salaire, id_recruteur } = req.body;
+                        
+                            // Validation: Ensure all required fields are present
+                            if (!titre || !description || !entreprise || !lieu || !id_recruteur) {
+                                return res.status(400).json({ message: "Tous les champs requis doivent être remplis !" });
+                            }
+                        
+                            try {
+                                const newOffre = new Offre({
+                                    titre,
+                                    description,
+                                    entreprise,
+                                    lieu,
+                                    salaire: salaire || 0, // Default to 0 if not provided
+                                    date_publication: new Date(),
+                                    id_recruteur
+                                });
+                        
+                                await newOffre.save();
+                                res.status(201).json({ message: "Offre ajoutée avec succès", offre: newOffre });
+                            } catch (error) {
+                                console.error("❌ Erreur lors de l'ajout de l'offre:", error);
+                                res.status(500).json({ message: "Erreur lors de l'ajout de l'offre", error });
+                            }
+                        });
+        
+                        app.get("/filters", async (req, res) => {
+                            try {
+                                const villes = await Offre.distinct("lieu");
+                                const titres = await Offre.distinct("titre");
+                                res.json({ villes, titres });
+                            } catch (err) {
+                                res.status(500).json({ error: "Erreur lors de la récupération des filtres" });
+                            }
+                        });
+                        // Route pour récupérer une offre spécifique avec détails
+                        app.get("/offre/:id", async (req, res) => {
+                            try {
+                                const offre = await Offre.findById(req.params.id).populate("candidatures");
+                                if (!offre) return res.status(404).json({ message: "Offre non trouvée" });
+                                res.json(offre);
+                            } catch (err) {
+                                res.status(500).json({ message: "Erreur serveur", error: err });
+                            }
+                        });
         // Démarrer le serveur
         app.listen(PORT, () => {   
             console.log(`🚀 Serveur en cours d'exécution sur http://localhost:${PORT}`);
