@@ -2,7 +2,7 @@
         const express = require("express");
         const mongoose = require("mongoose");
         const cors = require("cors");
-       // const multer = require("multer");
+       const multer = require("multer");
       //  const path = require("path");
         //const jwt = require("jsonwebtoken");
         //const bcrypt = require("bcrypt");
@@ -239,6 +239,14 @@
                                 res.status(500).json({ message: "Erreur serveur", error: err });
                             }
                         });
+                        const storage = multer.diskStorage({
+                                    destination: "./uploads",
+                                    filename: (req, file, cb) => {
+                                        cb(null, Date.now() + path.extname(file.originalname));
+                                    }
+                                });
+                                const upload = multer({ storage });
+                        
         // Démarrer le serveur
         app.listen(PORT, () => {   
             console.log(`🚀 Serveur en cours d'exécution sur http://localhost:${PORT}`);
