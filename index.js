@@ -75,19 +75,28 @@ const upload = multer({ storage })
 
 // Helper function to upload file to S3
 async function uploadFileToS3(file, folder) {
-  const fileExtension = path.extname(file.originalname)
-  const fileName = `${folder}/${uuidv4()}${fileExtension}`
+  const fileExtension = path.extname(file.originalname);
+  const fileName = `${folder}/${uuidv4()}${fileExtension}`;
 
   const params = {
     Bucket: process.env.AWS_S3_BUCKET_NAME,
     Key: fileName,
     Body: file.buffer,
     ContentType: file.mimetype,
+  };
+
+  console.log('Uploading to S3 with params:', params);
+
+  try {
+    await s3Client.send(new PutObjectCommand(params));
+  } catch (err) {
+    console.error('Error uploading file to S3:', err);
+    throw new Error('S3 upload failed');
   }
 
-  await s3Client.send(new PutObjectCommand(params))
-  return `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`
+  return `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
 }
+
 app.get("/", (req, res) => {
     res.send("Welcome to the API! Use /products to get data.");
 });
@@ -275,74 +284,62 @@ app.get("/offre/:id", async (req, res) => {
   }
 })
 
-const verifyToken = (req, res, next) => {
-  const token = req.header("Authorization") // "Bearer ey..."
-
-  if (!token) {
-    return res.status(403).json({ message: "Accès refusé. Aucun token fourni." })
-  }
-
-  try {
-    // Remove "Bearer " if present
-    const actualToken = token.replace("Bearer ", "")
-
-    // Verify the token
-    const decoded = jwt.verify(actualToken, "SECRET_KEY")
-    req.user = decoded // Pass user data to next middleware
-    next()
-  } catch (err) {
-    if (err.name === "TokenExpiredError") {
-      return res.status(401).json({ message: "Erreur de vérification de token: Token expiré." })
-    } else if (err.name === "JsonWebTokenError") {
-      return res.status(401).json({ message: "Token invalide." })
-    } else {
-      return res.status(500).json({ message: "Erreur lors de la vérification du token." })
-    }
-  }
-}
+ const verifyToken = (req, res, next) => {
+            const token = req.header("Authorization"); // "Bearer ey..."
+        
+            if (!token) {
+                return res.status(403).json({ message: "Accès refusé. Aucun token fourni." });
+            }
+        
+            try {
+                // Remove "Bearer " if present
+                const actualToken = token.replace("Bearer ", "");
+                
+                // Verify the token
+                const decoded = jwt.verify(actualToken, "SECRET_KEY");
+                req.user = decoded; // Pass user data to next middleware
+                next();
+            } catch (err) {
+                if (err.name === "TokenExpiredError") {
+                    return res.status(401).json({ message: "Erreur de vérification de token: Token expiré." });
+                } else if (err.name === "JsonWebTokenError") {
+                    return res.status(401).json({ message: "Token invalide." });
+                } else {
+                    return res.status(500).json({ message: "Erreur lors de la vérification du token." });
+                }
+            }
+        };
+        
 
 // UPDATED: Route for submitting a job application with cloud storage
-app.post(
-  "/candidature",
-  verifyToken,
-  upload.fields([{ name: "cv" }, { name: "lettre_motivation" }]),
-  async (req, res) => {
-    try {
-      const { id_offre } = req.body
-
-      if (!mongoose.Types.ObjectId.isValid(id_offre)) {
-        return res.status(400).json({ message: "ID d'offre invalide" })
-      }
-
-      if (!req.files?.cv || !req.files?.lettre_motivation) {
-        return res.status(400).json({ message: "CV et lettre de motivation sont requis" })
-      }
-
-      // Upload files to S3
-      const cvUrl = await uploadFileToS3(req.files.cv[0], "cvs")
-      const lettreUrl = await uploadFileToS3(req.files.lettre_motivation[0], "lettres")
-
-      const newCandidature = new Candidature({
-        id_offre,
-        id_candidat: req.user.id, // récupéré depuis verifyToken
-        cv: cvUrl,
-        lettre_motivation: lettreUrl,
-      })
-
-      await newCandidature.save()
-      await Offre.findByIdAndUpdate(id_offre, { $push: { candidatures: newCandidature._id } })
-
-      res.status(201).json({
-        message: "Candidature envoyée avec succès",
-        candidature: newCandidature,
-      })
-    } catch (err) {
-      console.error("Erreur lors de la soumission de candidature:", err)
-      res.status(500).json({ message: "Erreur lors de la soumission", error: err.message })
-    }
-  },
-)
-
+ app.post("/candidature", verifyToken, upload.fields([{ name: "cv" }, { name: "lettre_motivation" }]), async (req, res) => {
+            try {
+                const { id_offre } = req.body;
+        
+                if (!mongoose.Types.ObjectId.isValid(id_offre)) {
+                    return res.status(400).json({ message: "ID d'offre invalide" });
+                }
+        
+                if (!req.files?.cv || !req.files?.lettre_motivation) {
+                    return res.status(400).json({ message: "CV et lettre de motivation sont requis" });
+                }
+        
+                const newCandidature = new Candidature({
+                    id_offre,
+                    id_candidat: req.user.id, // récupéré depuis verifyToken
+                    cv: req.files.cv[0].path,
+                    lettre_motivation: req.files.lettre_motivation[0].path
+                });
+        
+                await newCandidature.save();
+                await Offre.findByIdAndUpdate(id_offre, { $push: { candidatures: newCandidature._id } });
+        
+                res.status(201).json({ message: "Candidature envoyée avec succès", candidature: newCandidature });
+            } catch (err) {
+                res.status(500).json({ message: "Erreur lors de la soumission", error: err });
+            }
+        });
+        
 app.get("/me", async (req, res) => {
   const authHeader = req.headers.authorization
   if (!authHeader) {
