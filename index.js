@@ -58,7 +58,10 @@
         
         const User = mongoose.model("User", userSchema, "users");
 
-
+        app.get("/", (req, res) => {
+          res.send("Bienvenue sur l'API ! Utilisez /offres pour récupérer les offres d'emploi.");
+      });
+      
         app.post("/signup", async (req, res) => {
             const { nom, prenom, email, mot_de_passe, role } = req.body; // Ajouter le rôle
             try {
