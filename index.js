@@ -13,7 +13,12 @@ const PORT = process.env.PORT || 5050
 
 // Middleware
 app.use(express.json())
-app.use(cors())
+app.use(cors({
+  origin: "https://pfe-teal.vercel.app", // Allow this origin
+  methods: ["GET", "POST"], // Specify allowed methods
+  credentials: true // Allow credentials if needed
+}));
+
 //app.use("/uploads", express.static("uploads"))
 
 // Connexion à MongoDB Atlas
@@ -68,7 +73,6 @@ const s3Client = new S3Client({
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
 })
-
 // Configure multer for memory storage (files will be in memory, not on disk)
 const storage = multer.memoryStorage()
 const upload = multer({ storage })
@@ -84,16 +88,13 @@ async function uploadFileToS3(file, folder) {
     Body: file.buffer,
     ContentType: file.mimetype,
   };
-
   console.log('Uploading to S3 with params:', params);
-
   try {
     await s3Client.send(new PutObjectCommand(params));
   } catch (err) {
     console.error('Error uploading file to S3:', err);
     throw new Error('S3 upload failed');
   }
-
   return `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
 }
 
