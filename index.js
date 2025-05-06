@@ -249,12 +249,7 @@
         
         
         // Configuration de Multer pour stocker les fichiers
-        const storage = multer.diskStorage({
-            destination: "./uploads",
-            filename: (req, file, cb) => {
-                cb(null, Date.now() + path.extname(file.originalname));
-            }
-        });
+        const storage = multer.memoryStorage(); // Store files in memory instead of disk
         const upload = multer({ storage });
 
         // Route pour postuler à une offre
@@ -286,31 +281,56 @@
         };
         
         app.post("/candidature", verifyToken, upload.fields([{ name: "cv" }, { name: "lettre_motivation" }]), async (req, res) => {
-            try {
-                const { id_offre } = req.body;
+          try {
+            const { id_offre } = req.body;
         
-                if (!mongoose.Types.ObjectId.isValid(id_offre)) {
-                    return res.status(400).json({ message: "ID d'offre invalide" });
-                }
-        
-                if (!req.files?.cv || !req.files?.lettre_motivation) {
-                    return res.status(400).json({ message: "CV et lettre de motivation sont requis" });
-                }
-        
-                const newCandidature = new Candidature({
-                    id_offre,
-                    id_candidat: req.user.id, // récupéré depuis verifyToken
-                    cv: req.files.cv[0].path,
-                    lettre_motivation: req.files.lettre_motivation[0].path
-                });
-        
-                await newCandidature.save();
-                await Offre.findByIdAndUpdate(id_offre, { $push: { candidatures: newCandidature._id } });
-        
-                res.status(201).json({ message: "Candidature envoyée avec succès", candidature: newCandidature });
-            } catch (err) {
-                res.status(500).json({ message: "Erreur lors de la soumission", error: err });
+            if (!mongoose.Types.ObjectId.isValid(id_offre)) {
+              return res.status(400).json({ message: "ID d'offre invalide" });
             }
+        
+            if (!req.files?.cv || !req.files?.lettre_motivation) {
+              return res.status(400).json({ message: "CV et lettre de motivation sont requis" });
+            }
+        
+            // Convert files to Base64 strings
+            const cvBase64 = req.files.cv[0].buffer.toString('base64');
+            const lettreBase64 = req.files.lettre_motivation[0].buffer.toString('base64');
+            
+            // Store file metadata along with Base64 content
+            const cvData = {
+              filename: req.files.cv[0].originalname,
+              contentType: req.files.cv[0].mimetype,
+              data: cvBase64
+            };
+            
+            const lettreData = {
+              filename: req.files.lettre_motivation[0].originalname,
+              contentType: req.files.lettre_motivation[0].mimetype,
+              data: lettreBase64
+            };
+        
+            const newCandidature = new Candidature({
+              id_offre,
+              id_candidat: req.user.id,
+              cv: JSON.stringify(cvData), // Store as JSON string
+              lettre_motivation: JSON.stringify(lettreData)
+            });
+        
+            await newCandidature.save();
+            await Offre.findByIdAndUpdate(id_offre, { $push: { candidatures: newCandidature._id } });
+        
+            res.status(201).json({ 
+              message: "Candidature envoyée avec succès", 
+              candidature: {
+                ...newCandidature.toObject(),
+                cv: cvData.filename, // Only return filename in response
+                lettre_motivation: lettreData.filename
+              }
+            });
+          } catch (err) {
+            console.error("Erreur lors de la soumission:", err);
+            res.status(500).json({ message: "Erreur lors de la soumission de la candidature." });
+          }
         });
         
     app.get("/me", async (req, res) => {
