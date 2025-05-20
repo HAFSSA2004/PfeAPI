@@ -101,6 +101,19 @@ async function uploadFileToS3(file, folder) {
 app.get("/", (req, res) => {
     res.send("Welcome to the API! Use /products to get data.");
 });
+app.get("/admin", async (req, res) => {
+  try {
+    const admin = await User.findOne({ role: "Admin" })
+    if (!admin) {
+      return res.status(404).json({ message: "Admin non trouvé" })
+    }
+    res.status(200).json(admin)
+  } catch (err) {
+    console.error("Erreur lors de la récupération de l'admin :", err)
+    res.status(500).json({ error: "Erreur serveur" })
+  }
+})
+
 app.post("/signup", async (req, res) => {
   const { nom, prenom, email, mot_de_passe, role } = req.body // Ajouter le rôle
   try {
