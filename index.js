@@ -11,7 +11,7 @@ const { v4: uuidv4 } = require("uuid")
 const app = express()
 const PORT = process.env.PORT || 5050
 
-// Middleware
+// Middleware  ynk
 app.use(express.json())
 app.use(cors({
    origin: "https://pfe-teal.vercel.app", // Allow this origin
