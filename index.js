@@ -475,25 +475,34 @@ app.post(
 )
 app.get("/candidature/:id/cv", verifyToken, async (req, res) => {
   try {
+    console.log("📄 Fetching CV for candidature:", req.params.id)
     const candidature = await Candidature.findById(req.params.id)
 
     if (!candidature || !candidature.cv) {
+      console.log("❌ CV not found")
       return res.status(404).json({ message: "CV non trouvé" })
     }
+
+    console.log("✅ CV found, filename:", candidature.cv.filename)
+    console.log("✅ Content type:", candidature.cv.contentType)
+    console.log("✅ File size:", candidature.cv.size)
 
     // Convert Base64 back to buffer
     const fileBuffer = Buffer.from(candidature.cv.data, "base64")
 
+    // FIXED: Set correct Content-Type and inline disposition for browser viewing
     res.set({
       "Content-Type": candidature.cv.contentType,
-      "Content-Disposition": `attachment; filename="${candidature.cv.filename}"`,
+      "Content-Disposition": `inline; filename="${candidature.cv.filename}"`, // Changed to inline
       "Content-Length": fileBuffer.length,
+      // Add cache control to improve performance
+      "Cache-Control": "public, max-age=86400",
     })
 
     res.send(fileBuffer)
   } catch (err) {
-    console.error("Error downloading CV:", err)
-    res.status(500).json({ message: "Erreur lors du téléchargement du CV" })
+    console.error("❌ Error downloading CV:", err)
+    res.status(500).json({ message: "Erreur lors du téléchargement du CV", error: err.message })
   }
 })
 
