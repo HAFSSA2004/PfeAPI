@@ -18,7 +18,40 @@ app.use(cors({
   methods: ["GET", "POST"], // Specify allowed methods
   credentials: true // Allow credentials if needed
 }));
+app.get("/candidature/:id/cv", verifyToken, async (req, res) => {
+  try {
+    console.log("📄 Fetching CV for candidature:", req.params.id);
+    const candidature = await Candidature.findById(req.params.id);
 
+    if (!candidature || !candidature.cv) {
+      console.log("❌ CV not found");
+      return res.status(404).json({ message: "CV non trouvé" });
+    }
+
+    console.log("✅ CV found, filename:", candidature.cv.filename);
+    console.log("✅ Content type:", candidature.cv.contentType);
+    console.log("✅ File size:", candidature.cv.size);
+
+    // Convert Base64 back to buffer
+    const fileBuffer = Buffer.from(candidature.cv.data, "base64");
+
+    // Enhanced headers for better browser compatibility
+    res.set({
+      "Content-Type": candidature.cv.contentType,
+      "Content-Disposition": `inline; filename="${candidature.cv.filename}"`,
+      "Content-Length": fileBuffer.length,
+      "Cache-Control": "public, max-age=86400",
+      // Add CORS headers for blob handling
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Expose-Headers": "Content-Type, Content-Disposition, Content-Length"
+    });
+
+    res.send(fileBuffer);
+  } catch (err) {
+    console.error("❌ Error downloading CV:", err);
+    res.status(500).json({ message: "Erreur lors du téléchargement du CV", error: err.message });
+  }
+});
 //app.use("/uploads", express.static("uploads"))
 
 // Connexion à MongoDB Atlas
