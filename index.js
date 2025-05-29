@@ -330,13 +330,38 @@ app.get("/filters", async (req, res) => {
 // Route pour récupérer une offre spécifique avec détails
 app.get("/offre/:id", async (req, res) => {
   try {
-    const offre = await Offre.findById(req.params.id).populate("candidatures")
-    if (!offre) return res.status(404).json({ message: "Offre non trouvée" })
+    console.log("🔍 Fetching offer with ID:", req.params.id)
+
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: "ID d'offre invalide" })
+    }
+
+    // Populate candidatures but EXCLUDE the heavy Base64 file data
+    const offre = await Offre.findById(req.params.id).populate({
+      path: "candidatures",
+      select: "-cv.data -lettre_motivation.data", // ✅ EXCLUDE Base64 data
+      populate: {
+        path: "id_candidat",
+        select: "nom prenom email", // Only basic candidate info
+      },
+    })
+
+    if (!offre) {
+      return res.status(404).json({ message: "Offre non trouvée" })
+    }
+
+    console.log("✅ Offer fetched successfully")
     res.json(offre)
   } catch (err) {
-    res.status(500).json({ message: "Erreur serveur", error: err })
+    console.error("❌ Error in /offre/:id route:", err)
+    res.status(500).json({
+      message: "Erreur serveur",
+      error: err.message || "Unknown error",
+    })
   }
 })
+
 
  const verifyToken = (req, res, next) => {
             const token = req.header("Authorization"); // "Bearer ey..."
