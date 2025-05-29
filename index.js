@@ -14,10 +14,12 @@ const PORT = process.env.PORT || 5050
 // Middleware
 app.use(express.json())
 app.use(cors({
-  origin: "https://pfe-teal.vercel.app", // Allow this origin
+   origin: "https://pfe-teal.vercel.app", // Allow this origin
   methods: ["GET", "POST"], // Specify allowed methods
   credentials: true // Allow credentials if needed
+ 
 }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }))
 
 //app.use("/uploads", express.static("uploads"))
 
@@ -47,8 +49,18 @@ const Offre = mongoose.model("Offre", offreSchema, "offres")
 const candidatureSchema = new mongoose.Schema({
   id_offre: { type: mongoose.Schema.Types.ObjectId, ref: "Offre", required: true },
   id_candidat: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-  cv: String,
-  lettre_motivation: String,
+  cv: {
+    filename: { type: String, required: true },
+    contentType: { type: String, required: true },
+    data: { type: String, required: true }, // Base64 encoded file data
+    size: { type: Number, required: true },
+  },
+  lettre_motivation: {
+    filename: { type: String, required: true },
+    contentType: { type: String, required: true },
+    data: { type: String, required: true }, // Base64 encoded file data
+    size: { type: Number, required: true },
+  },
   statut: { type: String, default: "en cours" },
   date_postulation: { type: Date, default: Date.now },
 })
@@ -75,7 +87,35 @@ const s3Client = new S3Client({
 })
 // Configure multer for memory storage (files will be in memory, not on disk)
 const storage = multer.memoryStorage()
-const upload = multer({ storage })
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit per file
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept only PDF, DOC, DOCX files
+    const allowedTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ]
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true)
+    } else {
+      cb(new Error("Type de fichier non autorisé. Seuls PDF, DOC et DOCX sont acceptés."))
+    }
+  },
+})
+
+// Helper function to convert file to Base64
+function fileToBase64(file) {
+  return {
+    filename: file.originalname,
+    contentType: file.mimetype,
+    data: file.buffer.toString("base64"),
+    size: file.size,
+  }
+}
 
 // Helper function to upload file to S3
 async function uploadFileToS3(file, folder) {
@@ -326,33 +366,137 @@ app.get("/offre/:id", async (req, res) => {
         
 
 // UPDATED: Route for submitting a job application with cloud storage
- app.post("/candidature", verifyToken, upload.fields([{ name: "cv" }, { name: "lettre_motivation" }]), async (req, res) => {
-            try {
-                const { id_offre } = req.body;
-        
-                if (!mongoose.Types.ObjectId.isValid(id_offre)) {
-                    return res.status(400).json({ message: "ID d'offre invalide" });
-                }
-        
-                if (!req.files?.cv || !req.files?.lettre_motivation) {
-                    return res.status(400).json({ message: "CV et lettre de motivation sont requis" });
-                }
-        
-                const newCandidature = new Candidature({
-                    id_offre,
-                    id_candidat: req.user.id, // récupéré depuis verifyToken  gi
-                    cv: req.files.cv[0].path,
-                    lettre_motivation: req.files.lettre_motivation[0].path
-                });
-        
-                await newCandidature.save();
-                await Offre.findByIdAndUpdate(id_offre, { $push: { candidatures: newCandidature._id } });
-        
-                res.status(201).json({ message: "Candidature envoyée avec succès", candidature: newCandidature });
-            } catch (err) {
-                res.status(500).json({ message: "Erreur lors de la soumission", error: err });
-            }
-        });
+app.post(
+  "/candidature",
+  verifyToken,
+  upload.fields([{ name: "cv" }, { name: "lettre_motivation" }]),
+  async (req, res) => {
+    try {
+      const { id_offre } = req.body
+
+      // Validate offer ID
+      if (!mongoose.Types.ObjectId.isValid(id_offre)) {
+        return res.status(400).json({ message: "ID d'offre invalide" })
+      }
+
+      // Check if files are provided
+      if (!req.files?.cv || !req.files?.lettre_motivation) {
+        return res.status(400).json({ message: "CV et lettre de motivation sont requis" })
+      }
+
+      console.log("Files received:", {
+        cv: req.files.cv[0].originalname,
+        lettre: req.files.lettre_motivation[0].originalname,
+      })
+
+      // Convert files to Base64
+      const cvData = fileToBase64(req.files.cv[0])
+      const lettreData = fileToBase64(req.files.lettre_motivation[0])
+
+      console.log("Files converted to Base64 successfully")
+
+      // Create new candidature with file data
+      const newCandidature = new Candidature({
+        id_offre,
+        id_candidat: req.user.id,
+        cv: cvData,
+        lettre_motivation: lettreData,
+        statut: "en cours",
+        date_postulation: new Date(),
+      })
+
+      // Save candidature to database
+      await newCandidature.save()
+      console.log("Candidature saved to database:", newCandidature._id)
+
+      // Update the offer with the new candidature
+      await Offre.findByIdAndUpdate(id_offre, {
+        $push: { candidatures: newCandidature._id },
+      })
+
+      res.status(201).json({
+        message: "Candidature envoyée avec succès",
+        candidature: {
+          _id: newCandidature._id,
+          id_offre: newCandidature.id_offre,
+          id_candidat: newCandidature.id_candidat,
+          statut: newCandidature.statut,
+          date_postulation: newCandidature.date_postulation,
+          cv: { filename: cvData.filename, size: cvData.size },
+          lettre_motivation: { filename: lettreData.filename, size: lettreData.size },
+        },
+      })
+    } catch (err) {
+      console.error("Error in /candidature route:", err)
+
+      if (err.message.includes("Type de fichier non autorisé")) {
+        return res.status(400).json({
+          message: err.message,
+        })
+      }
+
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(400).json({
+          message: "Fichier trop volumineux. Taille maximale: 10MB",
+        })
+      }
+
+      res.status(500).json({
+        message: "Erreur lors de la soumission de la candidature",
+        error: err.message,
+      })
+    }
+  },
+)
+app.get("/candidature/:id/cv", verifyToken, async (req, res) => {
+  try {
+    const candidature = await Candidature.findById(req.params.id)
+
+    if (!candidature || !candidature.cv) {
+      return res.status(404).json({ message: "CV non trouvé" })
+    }
+
+    // Convert Base64 back to buffer
+    const fileBuffer = Buffer.from(candidature.cv.data, "base64")
+
+    res.set({
+      "Content-Type": candidature.cv.contentType,
+      "Content-Disposition": `attachment; filename="${candidature.cv.filename}"`,
+      "Content-Length": fileBuffer.length,
+    })
+
+    res.send(fileBuffer)
+  } catch (err) {
+    console.error("Error downloading CV:", err)
+    res.status(500).json({ message: "Erreur lors du téléchargement du CV" })
+  }
+})
+
+// Route to download lettre de motivation file
+app.get("/candidature/:id/lettre", verifyToken, async (req, res) => {
+  try {
+    const candidature = await Candidature.findById(req.params.id)
+
+    if (!candidature || !candidature.lettre_motivation) {
+      return res.status(404).json({ message: "Lettre de motivation non trouvée" })
+    }
+
+    // Convert Base64 back to buffer
+    const fileBuffer = Buffer.from(candidature.lettre_motivation.data, "base64")
+
+    res.set({
+      "Content-Type": candidature.lettre_motivation.contentType,
+      "Content-Disposition": `attachment; filename="${candidature.lettre_motivation.filename}"`,
+      "Content-Length": fileBuffer.length,
+    })
+
+    res.send(fileBuffer)
+  } catch (err) {
+    console.error("Error downloading lettre:", err)
+    res.status(500).json({ message: "Erreur lors du téléchargement de la lettre" })
+  }
+})
+
         
 app.get("/me", async (req, res) => {
   const authHeader = req.headers.authorization
