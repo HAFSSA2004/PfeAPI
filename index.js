@@ -493,7 +493,7 @@ app.get("/candidature/:id/cv", verifyToken, async (req, res) => {
     // FIXED: Set correct Content-Type and inline disposition for browser viewing
     res.set({
       "Content-Type": candidature.cv.contentType,
-      "Content-Disposition": `inline; filename="${candidature.cv.filename}"`, // Changed to inline
+       "Content-Disposition": `attachment; filename="${candidature.cv.filename}"`,
       "Content-Length": fileBuffer.length,
       // Add cache control to improve performance
       "Cache-Control": "public, max-age=86400",
