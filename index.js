@@ -16,8 +16,9 @@ app.use(express.json())
 app.use(cors({
    origin: "https://pfe-teal.vercel.app", // Allow this origin
   methods: ["GET", "POST"], // Specify allowed methods
-  credentials: true // Allow credentials if needed
- 
+  credentials: true, // Allow credentials if needed
+ allowedHeaders: ["Content-Type", "Authorization"],
+  exposedHeaders: ["Content-Disposition", "Content-Type", "Content-Length"]
 }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }))
 
@@ -476,33 +477,66 @@ app.post(
 app.get("/candidature/:id/cv", verifyToken, async (req, res) => {
   try {
     console.log("📄 Fetching CV for candidature:", req.params.id)
+    
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      console.log("❌ Invalid ObjectId:", req.params.id)
+      return res.status(400).json({ message: "ID de candidature invalide" })
+    }
+
     const candidature = await Candidature.findById(req.params.id)
 
-    if (!candidature || !candidature.cv) {
-      console.log("❌ CV not found")
+    if (!candidature) {
+      console.log("❌ Candidature not found")
+      return res.status(404).json({ message: "Candidature non trouvée" })
+    }
+
+    if (!candidature.cv || !candidature.cv.data) {
+      console.log("❌ CV data not found")
       return res.status(404).json({ message: "CV non trouvé" })
     }
 
     console.log("✅ CV found, filename:", candidature.cv.filename)
     console.log("✅ Content type:", candidature.cv.contentType)
     console.log("✅ File size:", candidature.cv.size)
+    console.log("✅ Data length:", candidature.cv.data.length)
 
-    // Convert Base64 back to buffer
-    const fileBuffer = Buffer.from(candidature.cv.data, "base64")
+    // Validate Base64 data
+    if (!candidature.cv.data || candidature.cv.data.length === 0) {
+      console.log("❌ Empty CV data")
+      return res.status(404).json({ message: "Données du CV manquantes" })
+    }
 
-    // FIXED: Set correct Content-Type and inline disposition for browser viewing
+    // Convert Base64 back to buffer with error handling
+    let fileBuffer
+    try {
+      fileBuffer = Buffer.from(candidature.cv.data, "base64")
+      console.log("✅ Buffer created, size:", fileBuffer.length)
+    } catch (bufferError) {
+      console.error("❌ Error creating buffer:", bufferError)
+      return res.status(500).json({ message: "Erreur lors du traitement du fichier" })
+    }
+
+    // Set headers
     res.set({
-      "Content-Type": candidature.cv.contentType,
-      "Content-Disposition": `inline; filename="${candidature.cv.filename}"`, // Changed to inline
+      "Content-Type": candidature.cv.contentType || "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${candidature.cv.filename}"`,
       "Content-Length": fileBuffer.length,
-      // Add cache control to improve performance
       "Cache-Control": "public, max-age=86400",
     })
 
+    console.log("✅ Headers set, sending file...")
     res.send(fileBuffer)
+    console.log("✅ File sent successfully")
+
   } catch (err) {
-    console.error("❌ Error downloading CV:", err)
-    res.status(500).json({ message: "Erreur lors du téléchargement du CV", error: err.message })
+    console.error("❌ Error in CV endpoint:", err)
+    console.error("❌ Stack trace:", err.stack)
+    res.status(500).json({ 
+      message: "Erreur lors du téléchargement du CV", 
+      error: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    })
   }
 })
 
