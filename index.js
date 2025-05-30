@@ -496,10 +496,11 @@ app.get("/candidature/:id/cv", verifyToken, async (req, res) => {
       return res.status(404).json({ message: "CV non trouvé" })
     }
 
-    console.log("✅ CV found, filename:", candidature.cv.filename)
-    console.log("✅ Content type:", candidature.cv.contentType)
-    console.log("✅ File size:", candidature.cv.size)
-    console.log("✅ Data length:", candidature.cv.data.length)
+    console.log("✅ CV found:")
+    console.log(`   Filename: ${candidature.cv.filename}`)
+    console.log(`   Content type: ${candidature.cv.contentType}`)
+    console.log(`   Original size: ${candidature.cv.size}`)
+    console.log(`   Base64 data length: ${candidature.cv.data.length}`)
 
     // Validate Base64 data
     if (!candidature.cv.data || candidature.cv.data.length === 0) {
@@ -507,39 +508,88 @@ app.get("/candidature/:id/cv", verifyToken, async (req, res) => {
       return res.status(404).json({ message: "Données du CV manquantes" })
     }
 
+    // Check if Base64 data looks valid
+    const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/
+    if (!base64Regex.test(candidature.cv.data)) {
+      console.log("❌ Invalid Base64 data format")
+      return res.status(500).json({ message: "Données du CV corrompues" })
+    }
+
     // Convert Base64 back to buffer with error handling
     let fileBuffer
     try {
       fileBuffer = Buffer.from(candidature.cv.data, "base64")
-      console.log("✅ Buffer created, size:", fileBuffer.length)
+      console.log("✅ Buffer created successfully:")
+      console.log(`   Buffer size: ${fileBuffer.length}`)
+      console.log(`   Expected size: ${candidature.cv.size}`)
+      
+      // Check if buffer size matches expected size (allowing for some variance)
+      const sizeDifference = Math.abs(fileBuffer.length - candidature.cv.size)
+      const sizeVariancePercent = (sizeDifference / candidature.cv.size) * 100
+      
+      if (sizeVariancePercent > 10) { // Allow 10% variance
+        console.log(`⚠️ Size mismatch: ${sizeVariancePercent.toFixed(2)}% difference`)
+      }
+      
     } catch (bufferError) {
       console.error("❌ Error creating buffer:", bufferError)
       return res.status(500).json({ message: "Erreur lors du traitement du fichier" })
     }
 
-    // Set headers
-    res.set({
-      "Content-Type": candidature.cv.contentType || "application/octet-stream",
-      "Content-Disposition": `attachment; filename="${candidature.cv.filename}"`,
-      "Content-Length": fileBuffer.length,
-      "Cache-Control": "public, max-age=86400",
-    })
+    // Validate file buffer
+    if (fileBuffer.length === 0) {
+      console.log("❌ Empty file buffer")
+      return res.status(500).json({ message: "Fichier vide après traitement" })
+    }
 
-    console.log("✅ Headers set, sending file...")
+    // Check file signature for common file types
+    const fileSignature = fileBuffer.slice(0, 4).toString('hex')
+    console.log(`✅ File signature: ${fileSignature}`)
+    
+    // Common file signatures
+    const signatures = {
+      '25504446': 'PDF',
+      'd0cf11e0': 'DOC',
+      '504b0304': 'DOCX/ZIP'
+    }
+    
+    const detectedType = signatures[fileSignature]
+    if (detectedType) {
+      console.log(`✅ Detected file type: ${detectedType}`)
+    } else {
+      console.log(`⚠️ Unknown file signature: ${fileSignature}`)
+    }
+
+    // Set headers with better error handling
+    const headers = {
+      "Content-Type": candidature.cv.contentType || "application/octet-stream",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(candidature.cv.filename)}`,
+      "Content-Length": fileBuffer.length.toString(),
+      "Cache-Control": "public, max-age=86400",
+      "Accept-Ranges": "bytes"
+    }
+
+    console.log("✅ Setting headers:", headers)
+    res.set(headers)
+
+    console.log("✅ Sending file buffer...")
     res.send(fileBuffer)
     console.log("✅ File sent successfully")
 
   } catch (err) {
     console.error("❌ Error in CV endpoint:", err)
     console.error("❌ Stack trace:", err.stack)
-    res.status(500).json({ 
-      message: "Erreur lors du téléchargement du CV", 
-      error: err.message,
-      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
-    })
+    
+    // Make sure we don't send headers twice
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        message: "Erreur lors du téléchargement du CV", 
+        error: err.message,
+        timestamp: new Date().toISOString()
+      })
+    }
   }
 })
-
 // Route to download lettre de motivation file
 app.get("/candidature/:id/lettre", verifyToken, async (req, res) => {
   try {
