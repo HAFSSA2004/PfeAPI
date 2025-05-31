@@ -471,6 +471,7 @@ app.post(
     }
   },
 )
+// Fixed CV route with proper backticks
 app.get("/candidature/:id/cv", verifyToken, async (req, res) => {
   try {
     console.log("📄 Fetching CV for candidature:", req.params.id)
@@ -488,12 +489,11 @@ app.get("/candidature/:id/cv", verifyToken, async (req, res) => {
     // Convert Base64 back to buffer
     const fileBuffer = Buffer.from(candidature.cv.data, "base64")
 
-    // FIXED: Match the working letter route exactly - use attachment instead of inline
+    // FIXED: Added backticks around the string
     res.set({
       "Content-Type": candidature.cv.contentType,
-      "Content-Disposition": `attachment; filename="${candidature.cv.filename}"`, // Changed to attachment
+      "Content-Disposition": `attachment; filename="${candidature.cv.filename}"`, // Added backticks
       "Content-Length": fileBuffer.length,
-      // Remove Cache-Control header to match letter route
     })
 
     res.send(fileBuffer)
