@@ -14,7 +14,9 @@ const PORT = process.env.PORT || 5050
 // Middleware  ynk
 app.use(express.json())
 app.use(cors({
-  
+  origin: "https://pfe-teal.vercel.app", // Allow this origin
+  methods: ["GET", "POST"], // Specify allowed methods
+  credentials: true // Allow credentials if needed
  
 }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }))
