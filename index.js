@@ -14,9 +14,7 @@ const PORT = process.env.PORT || 5050
 // Middleware  ynk
 app.use(express.json())
 app.use(cors({
-   origin: "https://pfe-teal.vercel.app", // Allow this origin
-  methods: ["GET", "POST"], // Specify allowed methods
-  credentials: true // Allow credentials if needed
+  
  
 }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }))
@@ -493,7 +491,7 @@ app.get("/candidature/:id/cv", verifyToken, async (req, res) => {
     // FIXED: Set correct Content-Type and inline disposition for browser viewing
     res.set({
       "Content-Type": candidature.cv.contentType,
-      "Content-Disposition": `inline; filename="${candidature.cv.filename}"`, // Changed to inline
+       "Content-Disposition": `attachment; filename="${candidature.cv.filename}"`, // Changed to inline
       "Content-Length": fileBuffer.length,
       // Add cache control to improve performance
       "Cache-Control": "public, max-age=86400",
