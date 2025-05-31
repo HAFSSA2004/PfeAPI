@@ -488,13 +488,12 @@ app.get("/candidature/:id/cv", verifyToken, async (req, res) => {
     // Convert Base64 back to buffer
     const fileBuffer = Buffer.from(candidature.cv.data, "base64")
 
-    // FIXED: Set correct Content-Type and inline disposition for browser viewing
+    // FIXED: Match the working letter route exactly - use attachment instead of inline
     res.set({
       "Content-Type": candidature.cv.contentType,
-       "Content-Disposition": `attachment; filename="${candidature.cv.filename}"`, // Changed to inline
+      "Content-Disposition": `attachment; filename="${candidature.cv.filename}"`, // Changed to attachment
       "Content-Length": fileBuffer.length,
-      // Add cache control to improve performance
-      "Cache-Control": "public, max-age=86400",
+      // Remove Cache-Control header to match letter route
     })
 
     res.send(fileBuffer)
