@@ -475,34 +475,90 @@ app.post(
 app.get("/candidature/:id/cv", verifyToken, async (req, res) => {
   try {
     console.log("📄 Fetching CV for candidature:", req.params.id)
-    const candidature = await Candidature.findById(req.params.id)
 
-    if (!candidature || !candidature.cv) {
-      console.log("❌ CV not found")
-      return res.status(404).json({ message: "CV non trouvé" })
+    // Validate ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      console.log("❌ Invalid ObjectId format")
+      return res.status(400).json({ message: "ID de candidature invalide" })
     }
 
-    console.log("✅ CV found, filename:", candidature.cv.filename)
-    console.log("✅ Content type:", candidature.cv.contentType)
-    console.log("✅ File size:", candidature.cv.size)
+    const candidature = await Candidature.findById(req.params.id)
+    console.log("📋 Candidature found:", !!candidature)
 
-    // Convert Base64 back to buffer
-    const fileBuffer = Buffer.from(candidature.cv.data, "base64")
+    if (!candidature) {
+      console.log("❌ Candidature not found")
+      return res.status(404).json({ message: "Candidature non trouvée" })
+    }
 
-    // FIXED: Added backticks around the string
+    // Log the entire candidature structure to debug
+    console.log("📋 Candidature keys:", Object.keys(candidature.toObject()))
+    console.log("📋 CV exists:", !!candidature.cv)
+
+    // Check if CV data exists in any possible format
+    let cvData = null
+    let cvFilename = "cv.pdf"
+    let cvContentType = "application/pdf"
+
+    if (candidature.cv && candidature.cv.data) {
+      cvData = candidature.cv.data
+      cvFilename = candidature.cv.filename || "cv.pdf"
+      cvContentType = candidature.cv.contentType || "application/pdf"
+      console.log("✅ CV found in cv field")
+    } else {
+      console.log("❌ CV not found in expected location")
+      console.log("📋 Available fields:", Object.keys(candidature.toObject()))
+      return res.status(404).json({
+        message: "CV non trouvé",
+        debug: {
+          candidatureId: req.params.id,
+          availableFields: Object.keys(candidature.toObject()),
+          cvExists: !!candidature.cv,
+        },
+      })
+    }
+
+    console.log("✅ CV data length:", cvData ? cvData.length : 0)
+    console.log("✅ CV filename:", cvFilename)
+    console.log("✅ CV content type:", cvContentType)
+
+    // Validate Base64 data
+    if (!cvData || cvData.length === 0) {
+      console.log("❌ CV data is empty")
+      return res.status(404).json({ message: "CV data is empty" })
+    }
+
+    // Convert Base64 back to buffer with error handling
+    let fileBuffer
+    try {
+      fileBuffer = Buffer.from(cvData, "base64")
+      console.log("✅ Base64 conversion successful, buffer length:", fileBuffer.length)
+    } catch (base64Error) {
+      console.error("❌ Base64 conversion failed:", base64Error)
+      return res.status(500).json({
+        message: "Erreur de conversion Base64",
+        error: base64Error.message,
+      })
+    }
+
+    // Set headers exactly like the working letter route
     res.set({
-      "Content-Type": candidature.cv.contentType,
-      "Content-Disposition": `attachment; filename="${candidature.cv.filename}"`, // Added backticks
+      "Content-Type": cvContentType,
+      "Content-Disposition": `attachment; filename="${cvFilename}"`,
       "Content-Length": fileBuffer.length,
     })
 
+    console.log("✅ Sending CV file...")
     res.send(fileBuffer)
   } catch (err) {
-    console.error("❌ Error downloading CV:", err)
-    res.status(500).json({ message: "Erreur lors du téléchargement du CV", error: err.message })
+    console.error("❌ Error in CV route:", err)
+    console.error("❌ Error stack:", err.stack)
+    res.status(500).json({
+      message: "Erreur lors du téléchargement du CV",
+      error: err.message,
+      stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
+    })
   }
 })
-
 // Route to download lettre de motivation file
 app.get("/candidature/:id/lettre", verifyToken, async (req, res) => {
   try {
