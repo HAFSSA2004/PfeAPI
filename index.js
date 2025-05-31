@@ -290,6 +290,22 @@ app.get("/offres", async (req, res) => {
   }
 })
 
+
+
+app.get("/all", async (req, res) => {
+   try {
+    const { titre, lieu } = req.query;
+    const filter = {};
+    if (titre) filter.titre = { $regex: titre, $options: "i" };
+    if (lieu) filter.lieu = { $regex: lieu, $options: "i" };
+
+    const offres = await Offre.find(filter);
+    res.status(200).json(offres || []); // Return all matching offres
+  } catch (err) {
+    res.status(500).json({ error: "Erreur lors de la récupération des offres" });
+  }
+})
+
 app.post("/offres", async (req, res) => {
   const { titre, description, entreprise, lieu, salaire, id_recruteur } = req.body
 
