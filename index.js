@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 5050
 app.use(express.json())
 app.use(cors({
   origin: "https://pfe-teal.vercel.app", // Allow this origin
-  methods: ["GET", "POST"], // Specify allowed methods
+  methods: ["GET", "POST","PUT"], // Specify allowed methods
   credentials: true // Allow credentials if needed
  
 }));
